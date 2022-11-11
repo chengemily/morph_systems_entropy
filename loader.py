@@ -16,16 +16,31 @@ from scipy import stats
 import numpy as np
 import seaborn as sns
 
+
 class UD_Dataset:
     def __init__(self, filepath: str):
         # All data
         self.data = UD_Dataset.read_conllu_file(filepath)
         print('Sentence lengths:', sum([len(sentence) for sentence in self.data]) / len(self.data))
         self.nouns = [UD_Dataset.get_nouns(sentence) for sentence in self.data]
-        self.tokens = self.filter_nouns_by_number_gender()
-        self.types = self.dedup()
+        self.tokens = self.filter_nouns_by_number_gender('form')
+        self.types = self.dedup(self.tokens)
 
-        # self.context_entropy_data =
+        self.tokens_lemmas = self.filter_nouns_by_number_gender('lemma')
+        self.types_lemmas = self.dedup(self.tokens_lemmas)
+
+    def type_token_comparison(self):
+        # plurals_tokens = set(self.tokens_lemmas['MascPlur']).union(set(self.tokens_lemmas['FemPlur']))
+        plurals_types = set(self.types_lemmas['MascPlur']).union(set(self.types_lemmas['FemPlur']))
+        # sing_tokens = set(self.tokens_lemmas['MascSing']).union(set(self.tokens_lemmas['FemSing']))
+        sing_types = set(self.types_lemmas['MascSing']).union(set(self.types_lemmas['FemSing']))
+
+        print('Size plur. types: ', len(plurals_types))
+        print('Size sing. types: ', len(sing_types))
+
+        print('Size intersection: ', len(plurals_types.intersection(sing_types)))
+        print('Sing - plural: ', len(sing_types - plurals_types))
+        print('Plural - sing: ', len(plurals_types - sing_types))
 
     def get_windows_around_nouns(self, window_size:int):
         # For each noun, get a window of
@@ -104,8 +119,9 @@ class UD_Dataset:
     def plot_types_vs_tokens(self):
         pass
 
-    def filter_nouns_by_number_gender(self):
+    def filter_nouns_by_number_gender(self, kyword):
         """
+        :param: kyword (str): e.g. 'form' (the string of the noun), 'lemma'
         :return: Dict with keys "MascSing", "MascPlur", "FemSing", "FemPlur", and values = one list containing
         all instances of each type of noun in the corpus.
         """
@@ -123,18 +139,22 @@ class UD_Dataset:
 
                 # Filter out single letters and numbers
                 filtered[gender + number] = [
-                    token['form'].lower() for token in list(
+                    token[kyword].lower() for token in list(
                         filter(lambda x: len(x) > 1 and not any(char.isdigit() for char in x), final)
                     )
                 ]
 
         return filtered
 
-    def dedup(self):
-        self.types = {}
+    def dedup(self, data):
+        """
+        :param data: self.tokens or self.tokens_lemmas
+        :return: types
+        """
+        types = {}
         for category in self.tokens:
-            self.types[category] = list(set(self.tokens[category]))
-        return self.types
+            types[category] = list(set(data[category]))
+        return types
 
     def show_distribution(self, dataset):
         # Count number
@@ -186,20 +206,23 @@ class UD_Dataset:
 if __name__=='__main__':
 
     for fpath in [
-        './UD_Italian/it_isdt-ud-train.conllu',
-        './UD_French/fr_gsd-ud-train.conllu',
-        './UD_Catalan/ca_ancora-ud-train.conllu',
-        './UD_Spanish/es_ancora-ud-train.conllu'
+        './UD_French_all.conllu'
+       # './UD_Italian/it_isdt-ud-train.conllu',
+       # './UD_French/fr_gsd-ud-train.conllu',
+       # './UD_Catalan/ca_ancora-ud-train.conllu',
+       # './UD_Spanish/es_ancora-ud-train.conllu'
     ]:
         print('File: ', fpath)
         lang = fpath.split('/')[1].split('_')[1]
         data = UD_Dataset(fpath)
-        # print('----------------------------------------------')
-        # print('Tokens')
-        # data.show_distribution(data.tokens)
-        # print('----------------------------------------------')
-        # print('Types')
-        # data.show_distribution(data.types)
-        # print('==================================================================================')
-        # data.plot_token_frequency_pdf('token_frequency_{}.png'.format(lang), data.tokens, lang=lang)
+        data.type_token_comparison()
+        print('----------------------------------------------')
+        print('Tokens')
+        data.show_distribution(data.tokens)
+        print('----------------------------------------------')
+        print('Types')
+        data.show_distribution(data.types)
+
+        print('==================================================================================')
+        data.plot_token_frequency_pdf('token_frequency_{}.png'.format(lang), data.tokens, lang=lang)
         data.plot_noun_frequency_histogram('noun_frequency_histogram_{}.png'.format(lang), data.tokens, data.types, lang=lang)
