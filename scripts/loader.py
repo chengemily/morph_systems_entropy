@@ -6,7 +6,7 @@ Loading utilities. Includes:
 3.
 """
 
-from conllu import parse
+from conllu import parse, parse_incr
 from conllu.models import TokenList
 from scipy.stats import entropy
 import matplotlib.pyplot as plt
@@ -15,6 +15,23 @@ import tikzplotlib as tpl
 from scipy import stats
 import numpy as np
 import seaborn as sns
+import time 
+import random
+from tqdm import tqdm
+
+try:
+    from collections.abc import Iterable
+except ImportError:
+    from collections import Iterable
+
+# https://universaldependencies.org/u/pos/index.html
+# Filter everything that's not on the left column
+TO_FILTER = set([
+    'ADP', 'AUX', 'CCONJ', 'DET', 'NUM', 'PRON', 'SCONJ', 'PART', 'PUNCT', 'SYM', 'X'
+])
+TO_KEEP = set([
+    'ADJ', 'ADV', 'NOUN', 'PROPN', 'INTJ', 'VERB'
+])
 
 
 class UD_Dataset:
@@ -28,6 +45,18 @@ class UD_Dataset:
 
         self.tokens_lemmas = self.filter_nouns_by_number_gender('lemma')
         self.types_lemmas = self.dedup(self.tokens_lemmas)
+
+    def context_entropy(self):
+        #TODO
+        pass
+
+    def remove_token_frequency(freq=1):
+        """Removes tokens from self.tokens that only occur once.
+
+        Args:
+            freq (int, optional): _description_. Defaults to 1.
+        """
+        pass
 
     def type_token_comparison(self):
         # plurals_tokens = set(self.tokens_lemmas['MascPlur']).union(set(self.tokens_lemmas['FemPlur']))
@@ -46,7 +75,7 @@ class UD_Dataset:
         # For each noun, get a window of
         pass
 
-    # TODO
+    
     def plot_noun_frequency_histogram(self, figname: str, token_dataset, type_dataset, lang=None):
         """
         :param figname: (str) tex file to save.
@@ -90,7 +119,7 @@ class UD_Dataset:
         plt.savefig(figname)
         # tpl.save(f'{{{figname}}}.tex', axis_width=r'\figwidth', axis_height=r'\figheight')
 
-    def plot_token_frequency_pdf(self, figname: str, token_dataset: dict, lang=None, save_tex=False):
+    def plot_token_frequency_pdf(self, figname: str, token_dataset: dict, sample=100, lang=None, save_tex=False):
         """
         :param figname: (str) tex file to save.
         :param token_dataset: (dict) The dataset of tokens (e.g. All nouns, Animate nouns) to plot pdf
@@ -99,7 +128,11 @@ class UD_Dataset:
         ax.set_xlim(right=7)
         ax.set_ylim(top=0.45)
         for nountype, tokens in token_dataset.items():
-            unique_tokens = set(tokens)
+            if sample:
+                unique_tokens = random.sample(set(tokens), sample)
+            else:
+                unique_tokens = set(tokens)
+
             token_counts = np.array([np.log(tokens.count(token)) for token in unique_tokens])
             loc = np.mean(token_counts)
             scale = np.std(token_counts)
@@ -114,10 +147,6 @@ class UD_Dataset:
         plt.savefig(figname)
         if save_tex:
             tpl.save(f'{{{figname}}}.tex', axis_width=r'\figwidth', axis_height=r'\figheight')
-
-    # TODO
-    def plot_types_vs_tokens(self):
-        pass
 
     def filter_nouns_by_number_gender(self, kyword):
         """
@@ -174,9 +203,37 @@ class UD_Dataset:
         # Print KL
         print("KL: ", entropy(freq_vector, [0.25 for _ in range(4)]))
 
+    @staticmethod
+    def read_and_filter_conllu(filepaths: Iterable[str]):
+        """_summary_
+
+        Args:
+            filepaths (Iterable[str]): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        lines = []
+
+        for filepath in tqdm(filepaths):
+            with open(filepath, 'r') as file:
+                line = file.readline()
+                while line:
+                    line = file.readline()
+                    split_line = set(line.split('\t'))
+
+                    if len(TO_KEEP.intersection(split_line)): 
+                        lines.append(line)
+                        continue
+                    elif len(TO_FILTER.intersection(split_line)): 
+                        continue
+                    lines.append(line)
+            file.close()
+
+        data = '\n'.join(lines) 
 
     @staticmethod
-    def read_conllu_file(filepath: str):
+    def read_conllu_file(filepaths: Iterable[str]):
         """
         Loads file as list of sentences, where each sentence is a TokenList.
 
@@ -187,10 +244,14 @@ class UD_Dataset:
         :param filepath: (str)
         :return: parsed file as a list of sentences. Each sentence represented by a TokenList.
         """
-        with open(filepath, 'r') as file:
-            data = file.read()
-        sentences = parse(data)
-        file.close()
+        sentences = TokenList()
+
+        for filepath in tqdm(filepaths):
+            data_file = open(filepath, 'r', encoding='utf-8')
+            for sentence in parse_incr(data_file): sentences.extend(sentence)
+            data_file.close()
+
+        print('parsed conllu')
         return sentences
 
     @staticmethod
@@ -205,24 +266,28 @@ class UD_Dataset:
 
 if __name__=='__main__':
 
-    for fpath in [
-        './UD_French_all.conllu'
-       # './UD_Italian/it_isdt-ud-train.conllu',
-       # './UD_French/fr_gsd-ud-train.conllu',
-       # './UD_Catalan/ca_ancora-ud-train.conllu',
-       # './UD_Spanish/es_ancora-ud-train.conllu'
-    ]:
-        print('File: ', fpath)
-        lang = fpath.split('/')[1].split('_')[1]
-        data = UD_Dataset(fpath)
-        data.type_token_comparison()
-        print('----------------------------------------------')
-        print('Tokens')
-        data.show_distribution(data.tokens)
-        print('----------------------------------------------')
-        print('Types')
-        data.show_distribution(data.types)
+    # for fpath in [
+    #     '/home/echeng/morph_systems_entropy/wiki/ca_0_wikipedia.conllu'
+    #     # './wiki/fr_wikipedia.conllu'
+    #    # './UD_Italian/it_isdt-ud-train.conllu',
+    #    # './UD_French/fr_gsd-ud-train.conllu',
+    #    # './UD_Catalan/ca_ancora-ud-train.conllu',
+    #    # './UD_Spanish/es_ancora-ud-train.conllu'
 
-        print('==================================================================================')
-        data.plot_token_frequency_pdf('token_frequency_{}.png'.format(lang), data.tokens, lang=lang)
-        data.plot_noun_frequency_histogram('noun_frequency_histogram_{}.png'.format(lang), data.tokens, data.types, lang=lang)
+    # ]:
+        # print('File: ', fpath)
+    fpaths = ['/home/echeng/morph_systems_entropy/wiki/filtered_ca_{}_wikipedia.conllu'.format(i) for i in range(5)]
+    # lang = fpath.split('/')[1].split('_')[1]
+    lang = 'ca'
+    data = UD_Dataset(fpaths)
+    data.type_token_comparison()
+    print('----------------------------------------------')
+    print('Tokens')
+    data.show_distribution(data.tokens)
+    print('----------------------------------------------')
+    print('Types')
+    data.show_distribution(data.types)
+
+    print('==================================================================================')
+    data.plot_token_frequency_pdf('token_frequency_{}.png'.format(lang), data.tokens, lang=lang)
+    data.plot_noun_frequency_histogram('noun_frequency_histogram_{}.png'.format(lang), data.tokens, data.types, lang=lang)

@@ -54,5 +54,5 @@ def removeunicode(text):
     #return text
 
 if __name__ == '__main__':
-    #tag_data('fr', '/homedtcl/echeng/morph_systems_entropy/oscar/french.json')
-    tag_data('es', '/homedtcl/echeng/morph_systems_entropy/oscar/spanish.json')
+    #tag_data('fr', '/home/echeng/morph_systems_entropy/oscar/french.json')
+    tag_data('es', '/home/echeng/morph_systems_entropy/oscar/spanish.json')
